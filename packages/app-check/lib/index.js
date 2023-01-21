@@ -30,28 +30,61 @@ const namespace = 'appCheck';
 
 const nativeModuleName = 'RNFBAppCheckModule';
 
+export class ReactNativeFirebaseAppCheckProvider {
+  // TODO - this does nothing yet
+  configure() {
+    return;
+  }
+}
+
 class FirebaseAppCheckModule extends FirebaseModule {
+  getIsTokenRefreshEnabledDefault() {
+    // no default to start
+    isTokenAutoRefreshEnabled = undefined;
+
+    return isTokenAutoRefreshEnabled;
+  }
+
+  initializeAppCheck(options) {
+    // determine token refresh setting, if not specified
+    if (!isBoolean(options.isTokenAutoRefreshEnabled)) {
+      options.isTokenAutoRefreshEnabled = this.firebaseJson.app_check_token_auto_refresh;
+    }
+
+    // If that was not defined, attempt to use app-wide data collection setting per docs:
+    if (!isBoolean(options.isTokenAutoRefreshEnabled)) {
+      options.isTokenAutoRefreshEnabled = this.firebaseJson.app_data_collection_default_enabled;
+    }
+
+    // If that also was not defined, the default is documented as true.
+    if (!isBoolean(options.isTokenAutoRefreshEnabled)) {
+      options.isTokenAutoRefreshEnabled = true;
+    }
+
+    return this.native.activate('TODO', options.isTokenAutoRefreshEnabled);
+  }
+
   activate(siteKeyOrProvider, isTokenAutoRefreshEnabled) {
     if (!isString(siteKeyOrProvider)) {
       throw new Error('siteKeyOrProvider must be a string value to match firebase-js-sdk API');
     }
 
-    // If the caller did not specify token refresh, attempt to use app-check specific setting:
-    if (!isBoolean(isTokenAutoRefreshEnabled)) {
-      isTokenAutoRefreshEnabled = this.firebaseJson.app_check_token_auto_refresh;
-    }
+    // We wrap our new flexible interface, with compatible defaults
+    rnfbProvider = new ReactNativeFirebaseAppCheckProvider();
+    rnfbProvider.configure({
+      android: {
+        provider: 'safetyNet',
+      },
+      apple: {
+        provider: 'deviceCheck',
+      },
+      web: {
+        provider: 'reCaptchaV3',
+        siteKey: 'none',
+      },
+    });
 
-    // If that was not defined, attempt to use app-wide data collection setting per docs:
-    if (!isBoolean(isTokenAutoRefreshEnabled)) {
-      isTokenAutoRefreshEnabled = this.firebaseJson.app_data_collection_default_enabled;
-    }
-
-    // If that also was not defined, the default is documented as true.
-    if (!isBoolean(isTokenAutoRefreshEnabled)) {
-      isTokenAutoRefreshEnabled = true;
-    }
-
-    return this.native.activate(siteKeyOrProvider, isTokenAutoRefreshEnabled);
+    return this.initializeAppCheck({ provider: rnfbProvider, isTokenAutoRefreshEnabled });
   }
 
   setTokenAutoRefreshEnabled(isTokenAutoRefreshEnabled) {
