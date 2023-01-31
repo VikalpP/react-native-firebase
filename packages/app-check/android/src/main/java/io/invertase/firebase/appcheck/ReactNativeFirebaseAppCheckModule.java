@@ -37,6 +37,8 @@ public class ReactNativeFirebaseAppCheckModule extends ReactNativeFirebaseModule
   private static final String TAG = "AppCheck";
   private static final String LOGTAG = "RNFBAppCheck";
   private static final String KEY_APPCHECK_TOKEN_REFRESH_ENABLED = "app_check_token_auto_refresh";
+  ReactNativeFirebaseAppCheckProviderFactory providerFactory = new ReactNativeFirebaseAppCheckProviderFactory();
+  boolean factoryInstalled = false;
 
   static boolean isAppCheckTokenRefreshEnabled() {
     boolean enabled;
@@ -86,20 +88,44 @@ public class ReactNativeFirebaseAppCheckModule extends ReactNativeFirebaseModule
 
   ReactNativeFirebaseAppCheckModule(ReactApplicationContext reactContext) {
     super(reactContext, TAG);
+
+    // Our default token refresh config comes from config files, set it
+    FirebaseAppCheck firebaseAppCheck = FirebaseAppCheck.getInstance();
+    firebaseAppCheck.setTokenAutoRefreshEnabled(isAppCheckTokenRefreshEnabled());
+  }
+
+  @ReactMethod
+  public void configureProvider(String appName, String providerName, String debugToken, Promise promise) {
+    Log.d(LOGTAG, "configureProvider - appName/providerName/debugToken: " + appName + "/" + providerName + "/(not shown)");
+    providerFactory.configure(appName, providerName, debugToken);
+  }
+
+  @ReactMethod
+  public void initializeAppCheck(String appName, Promise promise) {
+    Log.d(LOGTAG, "initializeAppCheck - appName: " + appName);
   }
 
   @ReactMethod
   public void activate(
       String appName, String siteKeyProvider, boolean isTokenAutoRefreshEnabled, Promise promise) {
     try {
+
       FirebaseAppCheck firebaseAppCheck = FirebaseAppCheck.getInstance();
       firebaseAppCheck.setTokenAutoRefreshEnabled(isTokenAutoRefreshEnabled);
 
-
+      // TODO:
+      // - configure a new custom factory with our backwards-compatible configuration
+      //   - determine if we are SafetyNet or Debug provider
+      //   - determine if we should auto refresh tokens or not
+      //   - determine if we have a debug token or not
+      // - install the custom factory
       if (isAppDebuggable()) {
         Log.d(LOGTAG, "app is debuggable, configuring AppCheck for testing mode");
         if (BuildConfig.FIREBASE_APP_CHECK_DEBUG_TOKEN != "null") {
           Log.d(LOGTAG, "debug app check token found in BuildConfig. Installing known token.");
+
+          providerFactory.configure(appName, "debug", BuildConfig.FIREBASE_APP_CHECK_DEBUG_TOKEN);
+
           // Get DebugAppCheckProviderFactory class
           Class<DebugAppCheckProviderFactory> debugACFactoryClass =
               DebugAppCheckProviderFactory.class;
@@ -115,11 +141,14 @@ public class ReactNativeFirebaseAppCheckModule extends ReactNativeFirebaseModule
               (AppCheckProviderFactory) c.newInstance(cArgs));
         } else {
           Log.d(LOGTAG, "no debug app check token found in BuildConfig. Check Log for dynamic test token to configure in console.");
+          providerFactory.configure(appName, "debug", null);
+
           firebaseAppCheck.installAppCheckProviderFactory(
               DebugAppCheckProviderFactory.getInstance());
         }
 
       } else {
+        providerFactory.configure(appName, "safetyNet", null);
         firebaseAppCheck.installAppCheckProviderFactory(
             SafetyNetAppCheckProviderFactory.getInstance());
       }
